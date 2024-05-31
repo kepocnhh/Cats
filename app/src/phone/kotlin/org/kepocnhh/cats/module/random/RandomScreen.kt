@@ -108,6 +108,81 @@ private fun RandomScreen(
     }
 }
 
+private fun save(bytes: ByteArray): File {
+    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+    check(dir.exists())
+    check(dir.isDirectory)
+    check(dir.canRead())
+    val file = dir.resolve("${UUID.randomUUID()}.jpg")
+    file.writeBytes(bytes)
+    return file
+}
+
+@Composable
+private fun RandomScreen(bytes: ByteArray) {
+    val bitmapState = remember { mutableStateOf<ImageBitmap?>(null) }
+    val bitmap = bitmapState.value
+    LaunchedEffect(bytes) {
+        if (bitmap == null) {
+            withContext(Dispatchers.Default) {
+                bitmapState.value = BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
+            }
+        }
+    }
+    if (bitmap != null) {
+        val savedState = remember { mutableStateOf<File?>(null) }
+        val saving = remember { mutableStateOf(false) }
+        LaunchedEffect(saving.value) {
+            if (savedState.value == null && saving.value) {
+                savedState.value = withContext(Dispatchers.Default) {
+                    save(bytes)
+                }
+                saving.value = false
+            }
+        }
+        RandomScreen(
+            bitmap = bitmap,
+            saved = savedState.value,
+            onSave = {
+                if (savedState.value == null && !saving.value) saving.value = true
+            },
+        )
+    }
+}
+
+@Composable
+private fun RandomScreen(
+    error: Throwable,
+    onTryAgain: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center),
+        ) {
+            BasicText(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .wrapContentSize(),
+                text = "Loading a random cat error!",
+            )
+            BasicText(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .clickable(onClick = onTryAgain)
+                    .wrapContentSize(),
+                text = "try again",
+            )
+        }
+    }
+}
+
 @Composable
 internal fun RandomScreen(
     onBack: () -> Unit,
@@ -125,36 +200,24 @@ internal fun RandomScreen(
                 logics.requestRandomCat()
             }
         }
-        val bytes = state.value?.bytes
-        val bitmapState = remember { mutableStateOf<ImageBitmap?>(null) }
-        val bitmap = bitmapState.value
-        LaunchedEffect(bytes) {
-            if (bytes != null && bitmap == null) {
-                withContext(Dispatchers.Default) {
-                    bitmapState.value = BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
-                }
-            }
-        }
-        if (bitmap == null) {
+        val result = state.value?.result
+        if (result == null) {
             BasicText(
                 modifier = Modifier.align(Alignment.Center),
                 text = "loading...",
             )
         } else {
-            val savedState = remember { mutableStateOf<File?>(null) }
-            RandomScreen(
-                bitmap = bitmap,
-                saved = savedState.value,
-                onSave = {
-                    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    check(dir.exists())
-                    check(dir.isDirectory)
-                    check(dir.canRead())
-                    val name = "${UUID.randomUUID()}.jpg"
-                    if (bytes == null) TODO()
-                    val file = dir.resolve(name)
-                    file.writeBytes(bytes)
-                    savedState.value = file
+            result.fold(
+                onSuccess = { bytes ->
+                    RandomScreen(bytes = bytes)
+                },
+                onFailure = { error ->
+                    RandomScreen(
+                        error = error,
+                        onTryAgain = {
+                            logics.requestRandomCat()
+                        },
+                    )
                 },
             )
         }

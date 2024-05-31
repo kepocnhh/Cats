@@ -10,16 +10,19 @@ internal class RandomLogics(
     private val injection: Injection,
 ) : Logics(injection.contexts.main) {
     class State(
-        val bytes: ByteArray,
+        val result: Result<ByteArray>?
     )
 
     private val _state = MutableStateFlow<State?>(null)
     val state = _state.asStateFlow()
 
     fun requestRandomCat() = launch {
-        val bytes = withContext(injection.contexts.default) {
-            injection.remotes.getRandomCat()
+        _state.value = State(result = null)
+        val result = withContext(injection.contexts.default) {
+            runCatching {
+                injection.remotes.getRandomCat()
+            }
         }
-        _state.value = State(bytes = bytes)
+        _state.value = State(result = result)
     }
 }
